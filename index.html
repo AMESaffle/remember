@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Min Kom Ihåg-App (V4 - Förbättrad Logik)</title>
+    <title>Min Kom Ihåg-App (V5 - Dold Delmålsruta)</title>
     <script src="https://cdn.tailwindcss.com"></script>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer" />
     <style>
@@ -116,12 +116,14 @@
     </div>
 
     <script>
-        const STORAGE_KEY = 'min_lokala_todo_lista_v3'; // Behöll v3-nyckeln för kompatibilitet
+        const STORAGE_KEY = 'min_lokala_todo_lista_v3';
         const OLD_V1_KEY = 'min_lokala_todo_lista';
         const OLD_V2_KEY = 'min_lokala_app_data';
 
         let tasks = [];
         let expandedTaskIds = new Set();
+        // NY: Håller reda på vilka uppgifter som visar "lägg till delmål"-rutan
+        let showAddSubtaskInputForTaskIds = new Set();
 
         function parseDate(dateString) {
             if (!dateString) return null;
@@ -161,7 +163,6 @@
             modal.style.display = 'flex';
         }
 
-        // Säkrar att alla uppgifter har rätt struktur vid laddning
         function migrateTask(task) {
             if (!task.subtasks) {
                 task.subtasks = [];
@@ -285,10 +286,35 @@
             const completedSubtasks = task.subtasks.filter(st => st.completed).length;
             const totalSubtasks = task.subtasks.length;
             
-            // NY LOGIK: Kan huvuduppgiften slutföras?
             const canCompleteMainTask = (totalSubtasks === 0) || (totalSubtasks > 0 && completedSubtasks === totalSubtasks);
-            // Inaktivera checkboxen om det finns oklara delmål OCH uppgiften inte redan är klar
             const mainCheckboxDisabled = !canCompleteMainTask && !task.completed;
+
+            // NY LOGIK: Bygg HTML för "lägg till delmål"-knapp eller -formulär
+            const isAddingSubtask = showAddSubtaskInputForTaskIds.has(task.id);
+            let addSubtaskHTML = '';
+
+            if (isAddingSubtask) {
+                // Visa input-fältet och spara/avbryt-knappar
+                addSubtaskHTML = `
+                    <div class="flex gap-2 mt-3">
+                        <input type="text" id="new-subtask-text-${task.id}" placeholder="Skriv delmål och tryck ⏎" class="flex-grow p-2 border border-blue-500 rounded-md text-sm ring-2 ring-blue-200">
+                        <button data-task-id="${task.id}" class="confirm-add-subtask-btn px-3 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 text-sm" title="Spara delmål">
+                            <i class="fa-solid fa-check"></i>
+                        </button>
+                        <button data-task-id="${task.id}" class="cancel-add-subtask-btn px-3 py-2 bg-gray-500 text-white rounded-md hover:bg-gray-600 text-sm" title="Avbryt">
+                            <i class="fa-solid fa-times"></i>
+                        </button>
+                    </div>
+                `;
+            } else {
+                // Visa bara plus-knappen
+                addSubtaskHTML = `
+                    <button data-task-id="${task.id}" class="show-add-subtask-btn mt-3 px-4 py-2 bg-blue-50 text-blue-700 font-medium rounded-lg hover:bg-blue-100 text-sm w-full border border-blue-200 border-dashed">
+                        <i class="fa-solid fa-plus mr-2"></i>Lägg till delmål
+                    </button>
+                `;
+            }
+            // --- Slut på ny logik ---
 
             div.innerHTML = `
                 <div class="flex items-center justify-between p-3">
@@ -299,7 +325,6 @@
                             
                             <div class="flex items-center space-x-3 text-xs mt-1 text-gray-500">
                                 ${task.deadline ? `<span>${deadlineText}</span>` : ''}
-                                <!-- Denna del fanns redan och visar X/Y -->
                                 ${totalSubtasks > 0 ? `<span class="font-medium ${completedSubtasks === totalSubtasks ? 'text-green-600' : 'text-blue-600'}"><i class="fa-solid fa-list-check mr-1"></i> ${completedSubtasks}/${totalSubtasks}</span>` : ''}
                             </div>
                         </div>
@@ -321,12 +346,10 @@
                         <div id="subtask-list-${task.id}" class="space-y-2 mb-3">
                             ${renderSubtasksHTML(task)}
                         </div>
-                        <div class="flex gap-2">
-                            <input type="text" id="new-subtask-text-${task.id}" placeholder="Nytt delmål..." class="flex-grow p-2 border border-gray-300 rounded-md text-sm">
-                            <button data-task-id="${task.id}" class="add-subtask-btn px-3 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 text-sm">
-                                <i class="fa-solid fa-plus"></i>
-                            </button>
-                        </div>
+                        
+                        <!-- NY: Den dynamiska HTML:en för delmål läggs in här -->
+                        ${addSubtaskHTML}
+                        
                     </div>
                     
                     <div>
@@ -352,7 +375,6 @@
                     <div class="flex items-center mb-2">
                         <input type="checkbox" data-task-id="${task.id}" data-subtask-id="${st.id}" ${st.completed ? 'checked' : ''} class="subtask-checkbox h-4 w-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500 mr-3 cursor-pointer">
                         <span class="flex-grow text-sm ${st.completed ? 'line-through text-gray-500' : 'font-medium'}">${st.text}</span>
-                        <!-- Denna knapp fanns redan -->
                         <button data-task-id="${task.id}" data-subtask-id="${st.id}" class="delete-subtask-btn text-red-400 hover:text-red-600 p-1 rounded-full text-xs">
                             <i class="fa-solid fa-times"></i>
                         </button>
@@ -397,7 +419,6 @@
             deadlineInput.value = '';
         }
 
-        // UPPDATERAD FUNKTION
         function toggleTaskCompleted(taskId, completed) {
             const task = tasks.find(t => t.id === taskId);
             if (task) {
@@ -405,16 +426,14 @@
                 const totalSubtasks = task.subtasks.length;
                 const canCompleteMainTask = (totalSubtasks === 0) || (totalSubtasks > 0 && completedSubtasks === totalSubtasks);
 
-                // Om användaren försöker bocka i, men inte får
                 if (completed && !canCompleteMainTask) {
                     showModal("Kan inte slutföra", "Du måste slutföra alla delmål innan du kan bocka av huvuduppgiften.");
-                    renderTasks(); // Återställ checkboxen
+                    renderTasks(); 
                     return;
                 }
 
                 task.completed = completed;
                 
-                // NY LOGIK: Om användaren bockar UR huvuduppgiften, bocka ur alla delmål
                 if (!completed && totalSubtasks > 0) {
                     task.subtasks.forEach(st => st.completed = false);
                 }
@@ -436,6 +455,7 @@
         function deleteTask(taskId) {
             tasks = tasks.filter(t => t.id !== taskId);
             expandedTaskIds.delete(taskId);
+            showAddSubtaskInputForTaskIds.delete(taskId); // NY: Rensa vid radering
             saveTasks();
             renderTasks();
         }
@@ -443,6 +463,7 @@
         function toggleDetails(taskId) {
             if (expandedTaskIds.has(taskId)) {
                 expandedTaskIds.delete(taskId);
+                showAddSubtaskInputForTaskIds.delete(taskId); // NY: Dölj även input-fälten vid stängning
             } else {
                 expandedTaskIds.add(taskId);
             }
@@ -452,7 +473,7 @@
         function addSubtask(taskId) {
             const task = tasks.find(t => t.id === taskId);
             const textInput = document.getElementById(`new-subtask-text-${taskId}`);
-            const text = textInput.value.trim();
+            const text = textInput ? textInput.value.trim() : "";
             
             if (task && text !== "") {
                 const newSubtask = {
@@ -462,16 +483,21 @@
                     note: ""
                 };
                 task.subtasks.push(newSubtask);
-                
-                // NY LOGIK: Om vi lägger till ett nytt delmål, se till att huvuduppgiften inte är slutförd
                 task.completed = false;
                 
                 saveTasks();
                 renderTasks();
+
+                // NY: Se till att fokusen hamnar rätt för att lägga till fler
+                setTimeout(() => {
+                    const newInput = document.getElementById(`new-subtask-text-${taskId}`);
+                    if (newInput) {
+                        newInput.focus();
+                    }
+                }, 0);
             }
         }
         
-        // UPPDATERAD FUNKTION
         function toggleSubtask(taskId, subtaskId, completed) {
             const task = tasks.find(t => t.id === taskId);
             if (task) {
@@ -479,15 +505,12 @@
                 if (subtask) {
                     subtask.completed = completed;
                     
-                    // NY LOGIK: Kolla om alla delmål är klara
                     const completedSubtasks = task.subtasks.filter(st => st.completed).length;
                     const totalSubtasks = task.subtasks.length;
                     
                     if (totalSubtasks > 0 && completedSubtasks === totalSubtasks) {
-                        // Alla delmål klara, slutför huvuduppgiften
                         task.completed = true;
                     } else if (totalSubtasks > 0 && completedSubtasks < totalSubtasks) {
-                        // Om ett delmål bockas ur, se till att huvuduppgiften inte är slutförd
                         task.completed = false;
                     }
                     
@@ -502,23 +525,41 @@
             if (task) {
                 task.subtasks = task.subtasks.filter(st => st.id !== subtaskId);
                 
-                // NY LOGIK: Kolla om alla delmål är klara efter radering
                 const completedSubtasks = task.subtasks.filter(st => st.completed).length;
                 const totalSubtasks = task.subtasks.length;
                 
                 if (totalSubtasks > 0 && completedSubtasks === totalSubtasks) {
-                    task.completed = true; // Slutför om alla kvarvarande är klara
+                    task.completed = true;
                 } else if (totalSubtasks === 0) {
-                     // Om inga delmål finns kvar, återställ så huvuduppgiften kan bockas i/ur fritt
-                     // Låt task.completed vara som den är, men renderTasks() kommer nu låsa upp checkboxen
+                     // Låt vara
                 } else {
-                    task.completed = false; // Annars, se till att den inte är slutförd
+                    task.completed = false;
                 }
 
                 saveTasks();
                 renderTasks();
             }
         }
+
+        // --- NYA HJÄLPFUNKTIONER ---
+        function showAddSubtaskInput(taskId) {
+            showAddSubtaskInputForTaskIds.add(taskId);
+            renderTasks();
+            
+            // Fokusera automatiskt på input-fältet när det dyker upp
+            setTimeout(() => {
+                const input = document.getElementById(`new-subtask-text-${taskId}`);
+                if (input) {
+                    input.focus();
+                }
+            }, 0);
+        }
+
+        function hideAddSubtaskInput(taskId) {
+            showAddSubtaskInputForTaskIds.delete(taskId);
+            renderTasks();
+        }
+        // --- SLUT PÅ NYA FUNKTIONER ---
 
         function saveNote(taskId) {
             const task = tasks.find(t => t.id === taskId);
@@ -593,6 +634,7 @@
                     tasks = importedTasks.map(migrateTask);
                     
                     expandedTaskIds.clear();
+                    showAddSubtaskInputForTaskIds.clear(); // NY: Rensa vid import
                     saveTasks(); 
                     renderTasks();
                     showModal("Import Lyckades", `Lyckades importera ${tasks.length} uppgifter.`);
@@ -607,6 +649,7 @@
             reader.readAsText(file);
         }
 
+        // UPPDATERAD: Lade till nya klick-lyssnare
         function setupListListeners() {
             const todoList = document.getElementById('todo-list');
             
@@ -615,10 +658,14 @@
                 
                 const deleteBtn = target.closest('.delete-btn-task');
                 const expandBtn = target.closest('.expand-btn');
-                const addSubtaskBtn = target.closest('.add-subtask-btn');
                 const deleteSubtaskBtn = target.closest('.delete-subtask-btn');
                 const saveNoteBtn = target.closest('.save-note-btn');
                 const saveSubtaskNoteBtn = target.closest('.save-subtask-note-btn');
+                
+                // NYA LYSSNARE
+                const showAddSubtaskBtn = target.closest('.show-add-subtask-btn');
+                const confirmAddSubtaskBtn = target.closest('.confirm-add-subtask-btn');
+                const cancelAddSubtaskBtn = target.closest('.cancel-add-subtask-btn');
                 
                 if (deleteBtn) {
                     const taskId = parseInt(deleteBtn.dataset.taskId, 10);
@@ -630,11 +677,26 @@
                     toggleDetails(taskId);
                     return;
                 }
-                if (addSubtaskBtn) {
-                    const taskId = parseInt(addSubtaskBtn.dataset.taskId, 10);
-                    addSubtask(taskId);
+                
+                // NY: Hantera klick på "+ Lägg till delmål"
+                if (showAddSubtaskBtn) {
+                    const taskId = parseInt(showAddSubtaskBtn.dataset.taskId, 10);
+                    showAddSubtaskInput(taskId);
                     return;
                 }
+                // NY: Hantera klick på "Spara" (check-ikonen)
+                if (confirmAddSubtaskBtn) {
+                    const taskId = parseInt(confirmAddSubtaskBtn.dataset.taskId, 10);
+                    addSubtask(taskId); // Denna funktion hanterar redan att lägga till
+                    return;
+                }
+                // NY: Hantera klick på "Avbryt" (kryss-ikonen)
+                if (cancelAddSubtaskBtn) {
+                    const taskId = parseInt(cancelAddSubtaskBtn.dataset.taskId, 10);
+                    hideAddSubtaskInput(taskId);
+                    return;
+                }
+                
                 if (deleteSubtaskBtn) {
                     const taskId = parseInt(deleteSubtaskBtn.dataset.taskId, 10);
                     const subtaskId = parseInt(deleteSubtaskBtn.dataset.subtaskId, 10);
@@ -667,6 +729,19 @@
                     const subtaskId = parseInt(target.dataset.subtaskId, 10);
                     toggleSubtask(taskId, subtaskId, target.checked);
                     return;
+                }
+            });
+
+            // NY: Lyssnare för "Enter" på tangentbordet
+            todoList.addEventListener('keyup', (e) => {
+                // Kolla om vi är i rätt input-fält och om tangenten är Enter
+                if (e.key === 'Enter' && e.target.id && e.target.id.startsWith('new-subtask-text-')) {
+                    e.preventDefault(); // Förhindra standard-beteende
+                    // Hämta taskId från input-fältets id (t.ex. "new-subtask-text-123456789")
+                    const taskId = parseInt(e.target.id.split('-')[3], 10);
+                    if (!isNaN(taskId)) {
+                        addSubtask(taskId);
+                    }
                 }
             });
         }

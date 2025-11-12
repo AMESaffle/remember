@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Remember 2.1</title>
+    <title>Min Kom Ihåg-App (V4 - Förbättrad Logik)</title>
     <script src="https://cdn.tailwindcss.com"></script>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer" />
     <style>
@@ -63,7 +63,7 @@
 <body class="p-3 flex items-start justify-center pt-8">
 
     <div class="w-full max-w-2xl bg-white card rounded-xl p-6 md:p-8">
-        <h1 class="text-3xl md:text-4xl font-extrabold text-gray-800 mb-2">Remember 2.1</h1>
+        <h1 class="text-3xl md:text-4xl font-extrabold text-gray-800 mb-2">Kom Ihåg-App</h1>
         <p class="text-gray-500 mb-6">Dina uppgifter (med delmål och anteckningar) sparas lokalt.</p>
 
         <div class="space-y-4 mb-8 p-3 bg-blue-50 rounded-lg">
@@ -83,6 +83,7 @@
         </div>
 
         <div id="todo-list" class="space-y-3">
+            <!-- Uppgifter renderas här av JS -->
         </div>
 
         <div class="flex flex-col sm:flex-row gap-3 mt-8 border-t border-gray-200 pt-6">
@@ -97,6 +98,7 @@
 
     </div>
 
+    <!-- Varningsmodal -->
     <div id="warning-modal" class="fixed inset-0 bg-gray-900 bg-opacity-50 flex items-center justify-center p-3 z-50">
         <div class="bg-white rounded-xl shadow-2xl max-w-sm w-full p-6 transform transition-all scale-100">
             <div class="text-3xl text-red-500 mb-4" id="modal-icon"><i class="fa-solid fa-triangle-exclamation"></i></div>
@@ -114,7 +116,7 @@
     </div>
 
     <script>
-        const STORAGE_KEY = 'min_lokala_todo_lista_v3';
+        const STORAGE_KEY = 'min_lokala_todo_lista_v3'; // Behöll v3-nyckeln för kompatibilitet
         const OLD_V1_KEY = 'min_lokala_todo_lista';
         const OLD_V2_KEY = 'min_lokala_app_data';
 
@@ -159,6 +161,7 @@
             modal.style.display = 'flex';
         }
 
+        // Säkrar att alla uppgifter har rätt struktur vid laddning
         function migrateTask(task) {
             if (!task.subtasks) {
                 task.subtasks = [];
@@ -281,16 +284,22 @@
             const isExpanded = expandedTaskIds.has(task.id);
             const completedSubtasks = task.subtasks.filter(st => st.completed).length;
             const totalSubtasks = task.subtasks.length;
+            
+            // NY LOGIK: Kan huvuduppgiften slutföras?
+            const canCompleteMainTask = (totalSubtasks === 0) || (totalSubtasks > 0 && completedSubtasks === totalSubtasks);
+            // Inaktivera checkboxen om det finns oklara delmål OCH uppgiften inte redan är klar
+            const mainCheckboxDisabled = !canCompleteMainTask && !task.completed;
 
             div.innerHTML = `
                 <div class="flex items-center justify-between p-3">
                     <div class="flex-grow flex items-center">
-                        <input type="checkbox" data-task-id="${task.id}" ${task.completed ? 'checked' : ''} class="task-checkbox h-5 w-5 text-blue-600 rounded border-gray-300 focus:ring-blue-500 mr-4">
+                        <input type="checkbox" data-task-id="${task.id}" ${task.completed ? 'checked' : ''} ${mainCheckboxDisabled ? 'disabled' : ''} class="task-checkbox h-5 w-5 text-blue-600 rounded border-gray-300 focus:ring-blue-500 mr-4 ${mainCheckboxDisabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}">
                         <div class="flex-grow">
                             <span class="text-lg font-medium text-gray-800 ${task.completed ? 'line-through text-gray-400' : ''}">${task.text}</span>
                             
                             <div class="flex items-center space-x-3 text-xs mt-1 text-gray-500">
                                 ${task.deadline ? `<span>${deadlineText}</span>` : ''}
+                                <!-- Denna del fanns redan och visar X/Y -->
                                 ${totalSubtasks > 0 ? `<span class="font-medium ${completedSubtasks === totalSubtasks ? 'text-green-600' : 'text-blue-600'}"><i class="fa-solid fa-list-check mr-1"></i> ${completedSubtasks}/${totalSubtasks}</span>` : ''}
                             </div>
                         </div>
@@ -341,8 +350,9 @@
             return task.subtasks.map(st => `
                 <div class="subtask-item mb-3 p-3 bg-gray-50 rounded-lg border border-gray-200">
                     <div class="flex items-center mb-2">
-                        <input type="checkbox" data-task-id="${task.id}" data-subtask-id="${st.id}" ${st.completed ? 'checked' : ''} class="subtask-checkbox h-4 w-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500 mr-3">
+                        <input type="checkbox" data-task-id="${task.id}" data-subtask-id="${st.id}" ${st.completed ? 'checked' : ''} class="subtask-checkbox h-4 w-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500 mr-3 cursor-pointer">
                         <span class="flex-grow text-sm ${st.completed ? 'line-through text-gray-500' : 'font-medium'}">${st.text}</span>
+                        <!-- Denna knapp fanns redan -->
                         <button data-task-id="${task.id}" data-subtask-id="${st.id}" class="delete-subtask-btn text-red-400 hover:text-red-600 p-1 rounded-full text-xs">
                             <i class="fa-solid fa-times"></i>
                         </button>
@@ -387,10 +397,28 @@
             deadlineInput.value = '';
         }
 
+        // UPPDATERAD FUNKTION
         function toggleTaskCompleted(taskId, completed) {
             const task = tasks.find(t => t.id === taskId);
             if (task) {
+                const completedSubtasks = task.subtasks.filter(st => st.completed).length;
+                const totalSubtasks = task.subtasks.length;
+                const canCompleteMainTask = (totalSubtasks === 0) || (totalSubtasks > 0 && completedSubtasks === totalSubtasks);
+
+                // Om användaren försöker bocka i, men inte får
+                if (completed && !canCompleteMainTask) {
+                    showModal("Kan inte slutföra", "Du måste slutföra alla delmål innan du kan bocka av huvuduppgiften.");
+                    renderTasks(); // Återställ checkboxen
+                    return;
+                }
+
                 task.completed = completed;
+                
+                // NY LOGIK: Om användaren bockar UR huvuduppgiften, bocka ur alla delmål
+                if (!completed && totalSubtasks > 0) {
+                    task.subtasks.forEach(st => st.completed = false);
+                }
+                
                 saveTasks();
                 renderTasks();
             }
@@ -434,17 +462,35 @@
                     note: ""
                 };
                 task.subtasks.push(newSubtask);
+                
+                // NY LOGIK: Om vi lägger till ett nytt delmål, se till att huvuduppgiften inte är slutförd
+                task.completed = false;
+                
                 saveTasks();
                 renderTasks();
             }
         }
         
+        // UPPDATERAD FUNKTION
         function toggleSubtask(taskId, subtaskId, completed) {
             const task = tasks.find(t => t.id === taskId);
             if (task) {
                 const subtask = task.subtasks.find(st => st.id === subtaskId);
                 if (subtask) {
                     subtask.completed = completed;
+                    
+                    // NY LOGIK: Kolla om alla delmål är klara
+                    const completedSubtasks = task.subtasks.filter(st => st.completed).length;
+                    const totalSubtasks = task.subtasks.length;
+                    
+                    if (totalSubtasks > 0 && completedSubtasks === totalSubtasks) {
+                        // Alla delmål klara, slutför huvuduppgiften
+                        task.completed = true;
+                    } else if (totalSubtasks > 0 && completedSubtasks < totalSubtasks) {
+                        // Om ett delmål bockas ur, se till att huvuduppgiften inte är slutförd
+                        task.completed = false;
+                    }
+                    
                     saveTasks();
                     renderTasks();
                 }
@@ -455,6 +501,20 @@
             const task = tasks.find(t => t.id === taskId);
             if (task) {
                 task.subtasks = task.subtasks.filter(st => st.id !== subtaskId);
+                
+                // NY LOGIK: Kolla om alla delmål är klara efter radering
+                const completedSubtasks = task.subtasks.filter(st => st.completed).length;
+                const totalSubtasks = task.subtasks.length;
+                
+                if (totalSubtasks > 0 && completedSubtasks === totalSubtasks) {
+                    task.completed = true; // Slutför om alla kvarvarande är klara
+                } else if (totalSubtasks === 0) {
+                     // Om inga delmål finns kvar, återställ så huvuduppgiften kan bockas i/ur fritt
+                     // Låt task.completed vara som den är, men renderTasks() kommer nu låsa upp checkboxen
+                } else {
+                    task.completed = false; // Annars, se till att den inte är slutförd
+                }
+
                 saveTasks();
                 renderTasks();
             }

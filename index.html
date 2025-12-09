@@ -122,7 +122,7 @@
 
         let tasks = [];
         let expandedTaskIds = new Set();
-        // NY: Håller reda på vilka uppgifter som visar "lägg till delmål"-rutan
+        // Håller reda på vilka uppgifter som visar "lägg till delmål"-rutan
         let showAddSubtaskInputForTaskIds = new Set();
 
         function parseDate(dateString) {
@@ -163,19 +163,16 @@
             modal.style.display = 'flex';
         }
 
+        // Förenklad migration: tar bort 'note' fälten
         function migrateTask(task) {
             if (!task.subtasks) {
                 task.subtasks = [];
             }
             task.subtasks = task.subtasks.map(st => {
-                if (typeof st.note === 'undefined') {
-                    st.note = "";
-                }
+                delete st.note; // Tar bort anteckning från delmål
                 return st;
             });
-            if (typeof task.note === 'undefined') {
-                task.note = "";
-            }
+            delete task.note; // Tar bort anteckning från huvuduppgift
             return task;
         }
 
@@ -223,10 +220,10 @@
             const todoList = document.getElementById('todo-list');
             const filterText = document.getElementById('search-tasks').value.toLowerCase();
             
+            // Justering av filtrering: tar bort sökning i anteckningar
             const filteredTasks = tasks.filter(task => 
                 task.text.toLowerCase().includes(filterText) ||
-                task.note.toLowerCase().includes(filterText) ||
-                task.subtasks.some(st => st.text.toLowerCase().includes(filterText) || (st.note && st.note.toLowerCase().includes(filterText)))
+                task.subtasks.some(st => st.text.toLowerCase().includes(filterText))
             );
 
             if (filteredTasks.length === 0) {
@@ -238,11 +235,10 @@
                 return;
             }
 
+            // UPPDATERAD SORTERING: Efter skapandetid (timestamp), äldst (lägst värde) först
             const sortedTasks = [...filteredTasks].sort((a, b) => {
-                const dateA = a.deadline ? parseDate(a.deadline).getTime() : Infinity;
-                const dateB = b.deadline ? parseDate(b.deadline).getTime() : Infinity;
-                if (dateA !== dateB) return dateA - dateB;
-                return b.timestamp - a.timestamp; 
+                // Sortera efter timestamp (äldst först)
+                return a.timestamp - b.timestamp; 
             });
 
             todoList.innerHTML = '';
@@ -289,7 +285,7 @@
             const canCompleteMainTask = (totalSubtasks === 0) || (totalSubtasks > 0 && completedSubtasks === totalSubtasks);
             const mainCheckboxDisabled = !canCompleteMainTask && !task.completed;
 
-            // NY LOGIK: Bygg HTML för "lägg till delmål"-knapp eller -formulär
+            // Logik för "lägg till delmål"-knapp eller -formulär
             const isAddingSubtask = showAddSubtaskInputForTaskIds.has(task.id);
             let addSubtaskHTML = '';
 
@@ -314,8 +310,8 @@
                     </button>
                 `;
             }
-            // --- Slut på ny logik ---
 
+            // HTML för Task Details är förenklad (anteckningar borta)
             div.innerHTML = `
                 <div class="flex items-center justify-between p-3">
                     <div class="flex-grow flex items-center">
@@ -341,50 +337,35 @@
                 
                 <div class="task-details ${isExpanded ? 'expanded' : ''} px-4" data-details-id="${task.id}">
                     
-                    <div class="mb-4">
+                    <div class="mb-2">
                         <h4 class="text-sm font-semibold text-gray-600 mb-2">Delmål</h4>
                         <div id="subtask-list-${task.id}" class="space-y-2 mb-3">
                             ${renderSubtasksHTML(task)}
                         </div>
                         
-                        <!-- NY: Den dynamiska HTML:en för delmål läggs in här -->
                         ${addSubtaskHTML}
                         
                     </div>
                     
-                    <div>
-                        <h4 class="text-sm font-semibold text-gray-600 mb-2">Anteckning</h4>
-                        <textarea id="note-area-${task.id}" class="w-full p-2 border border-gray-300 rounded-md text-sm" rows="3" placeholder="Skriv din anteckning här...">${task.note}</textarea>
-                        <button data-task-id="${task.id}" class="save-note-btn mt-2 px-4 py-1 bg-green-600 text-white font-semibold rounded-lg text-sm hover:bg-green-700 transition duration-150">
-                            Spara Anteckning
-                        </button>
-                        <span id="save-confirm-${task.id}" class="text-sm text-green-700 ml-2 opacity-0 transition-opacity">Sparad!</span>
-                    </div>
                 </div>
             `;
             
             return div;
         }
 
+        // Förenklad rendering av delmål (anteckningar borta)
         function renderSubtasksHTML(task) {
             if (task.subtasks.length === 0) {
                 return '<p class="text-xs text-gray-400 pl-7">Inga delmål än.</p>';
             }
             return task.subtasks.map(st => `
-                <div class="subtask-item mb-3 p-3 bg-gray-50 rounded-lg border border-gray-200">
-                    <div class="flex items-center mb-2">
+                <div class="subtask-item mb-1 p-3 bg-gray-50 rounded-lg border border-gray-200">
+                    <div class="flex items-center">
                         <input type="checkbox" data-task-id="${task.id}" data-subtask-id="${st.id}" ${st.completed ? 'checked' : ''} class="subtask-checkbox h-4 w-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500 mr-3 cursor-pointer">
                         <span class="flex-grow text-sm ${st.completed ? 'line-through text-gray-500' : 'font-medium'}">${st.text}</span>
                         <button data-task-id="${task.id}" data-subtask-id="${st.id}" class="delete-subtask-btn text-red-400 hover:text-red-600 p-1 rounded-full text-xs">
                             <i class="fa-solid fa-times"></i>
                         </button>
-                    </div>
-                    <div class="pl-7">
-                        <textarea id="subtask-note-${task.id}-${st.id}" class="w-full p-2 border border-gray-300 rounded-md text-xs bg-white" rows="2" placeholder="Anteckning för detta delmål...">${st.note || ''}</textarea>
-                        <button data-task-id="${task.id}" data-subtask-id="${st.id}" class="save-subtask-note-btn mt-1 px-3 py-1 bg-green-600 text-white font-semibold rounded-md text-xs hover:bg-green-700 transition duration-150">
-                            Spara
-                        </button>
-                        <span id="subtask-save-confirm-${task.id}-${st.id}" class="text-xs text-green-700 ml-2 opacity-0 transition-opacity">Sparad!</span>
                     </div>
                 </div>
             `).join('');
@@ -408,7 +389,7 @@
                 completed: false,
                 timestamp: Date.now(),
                 subtasks: [],
-                note: ""
+                // 'note' fältet tas bort
             };
 
             tasks.push(newTask);
@@ -446,7 +427,7 @@
         function confirmDeleteTask(taskId) {
             showModal(
                 "Radera Huvuduppgift?", 
-                "Är du säker på att du vill radera denna uppgift och alla dess delmål/anteckningar?",
+                "Är du säker på att du vill radera denna uppgift och alla dess delmål?",
                 true, 
                 () => deleteTask(taskId) 
             );
@@ -455,7 +436,7 @@
         function deleteTask(taskId) {
             tasks = tasks.filter(t => t.id !== taskId);
             expandedTaskIds.delete(taskId);
-            showAddSubtaskInputForTaskIds.delete(taskId); // NY: Rensa vid radering
+            showAddSubtaskInputForTaskIds.delete(taskId); 
             saveTasks();
             renderTasks();
         }
@@ -463,7 +444,7 @@
         function toggleDetails(taskId) {
             if (expandedTaskIds.has(taskId)) {
                 expandedTaskIds.delete(taskId);
-                showAddSubtaskInputForTaskIds.delete(taskId); // NY: Dölj även input-fälten vid stängning
+                showAddSubtaskInputForTaskIds.delete(taskId); 
             } else {
                 expandedTaskIds.add(taskId);
             }
@@ -480,7 +461,7 @@
                     id: Date.now(),
                     text: text,
                     completed: false,
-                    note: ""
+                    // 'note' fältet tas bort
                 };
                 task.subtasks.push(newSubtask);
                 task.completed = false;
@@ -488,7 +469,7 @@
                 saveTasks();
                 renderTasks();
 
-                // NY: Se till att fokusen hamnar rätt för att lägga till fler
+                // Se till att fokusen hamnar rätt för att lägga till fler
                 setTimeout(() => {
                     const newInput = document.getElementById(`new-subtask-text-${taskId}`);
                     if (newInput) {
@@ -561,51 +542,26 @@
         }
         // --- SLUT PÅ NYA FUNKTIONER ---
 
-        function saveNote(taskId) {
-            const task = tasks.find(t => t.id === taskId);
-            const noteArea = document.getElementById(`note-area-${taskId}`);
-            if (task && noteArea) {
-                task.note = noteArea.value;
-                saveTasks();
-                
-                noteArea.value = task.note; 
-
-                const confirmMsg = document.getElementById(`save-confirm-${taskId}`);
-                confirmMsg.style.opacity = '1';
-
-                setTimeout(() => {
-                    confirmMsg.style.opacity = '0';
-                    renderTasks();
-                }, 2000); 
-            }
-        }
-
-        function saveSubtaskNote(taskId, subtaskId) {
-            const task = tasks.find(t => t.id === taskId);
-            if (task) {
-                const subtask = task.subtasks.find(st => st.id === subtaskId);
-                const noteArea = document.getElementById(`subtask-note-${taskId}-${subtaskId}`);
-                if (subtask && noteArea) {
-                    subtask.note = noteArea.value;
-                    saveTasks();
-                    
-                    const confirmMsg = document.getElementById(`subtask-save-confirm-${taskId}-${subtaskId}`);
-                    confirmMsg.style.opacity = '1';
-                    
-                    setTimeout(() => {
-                        confirmMsg.style.opacity = '0';
-                        renderTasks();
-                    }, 2000);
-                }
-            }
-        }
+        // Funktioner för att spara anteckningar är borttagna
 
         function exportTasks() {
             if (tasks.length === 0) {
                 showModal("Ingen data", "Det finns inga uppgifter att exportera.");
                 return;
             }
-            const json = JSON.stringify(tasks, null, 2); 
+            // Export: Tar bort 'note' fältet vid export
+            const tasksToExport = tasks.map(t => {
+                const copy = {...t};
+                delete copy.note; // Tar bort huvuduppgiftsanteckning
+                copy.subtasks = copy.subtasks.map(st => {
+                    const stCopy = {...st};
+                    delete stCopy.note; // Tar bort deluppgiftsanteckning
+                    return stCopy;
+                });
+                return copy;
+            });
+            
+            const json = JSON.stringify(tasksToExport, null, 2); 
             const blob = new Blob([json], { type: 'application/json' });
             const url = URL.createObjectURL(blob);
             
@@ -631,10 +587,10 @@
                         throw new Error("JSON-filen verkar inte innehålla en giltig lista med uppgifter.");
                     }
                     
-                    tasks = importedTasks.map(migrateTask);
+                    tasks = importedTasks.map(migrateTask); // Använder migreringsfunktionen för att rensa anteckningar
                     
                     expandedTaskIds.clear();
-                    showAddSubtaskInputForTaskIds.clear(); // NY: Rensa vid import
+                    showAddSubtaskInputForTaskIds.clear(); 
                     saveTasks(); 
                     renderTasks();
                     showModal("Import Lyckades", `Lyckades importera ${tasks.length} uppgifter.`);
@@ -649,7 +605,7 @@
             reader.readAsText(file);
         }
 
-        // UPPDATERAD: Lade till nya klick-lyssnare
+        // UPPDATERAD: Borttagna lyssnare för anteckningar
         function setupListListeners() {
             const todoList = document.getElementById('todo-list');
             
@@ -659,8 +615,8 @@
                 const deleteBtn = target.closest('.delete-btn-task');
                 const expandBtn = target.closest('.expand-btn');
                 const deleteSubtaskBtn = target.closest('.delete-subtask-btn');
-                const saveNoteBtn = target.closest('.save-note-btn');
-                const saveSubtaskNoteBtn = target.closest('.save-subtask-note-btn');
+                // const saveNoteBtn = target.closest('.save-note-btn'); // BORTTAGEN
+                // const saveSubtaskNoteBtn = target.closest('.save-subtask-note-btn'); // BORTTAGEN
                 
                 // NYA LYSSNARE
                 const showAddSubtaskBtn = target.closest('.show-add-subtask-btn');
@@ -678,19 +634,19 @@
                     return;
                 }
                 
-                // NY: Hantera klick på "+ Lägg till delmål"
+                // Hantera klick på "+ Lägg till delmål"
                 if (showAddSubtaskBtn) {
                     const taskId = parseInt(showAddSubtaskBtn.dataset.taskId, 10);
                     showAddSubtaskInput(taskId);
                     return;
                 }
-                // NY: Hantera klick på "Spara" (check-ikonen)
+                // Hantera klick på "Spara" (check-ikonen)
                 if (confirmAddSubtaskBtn) {
                     const taskId = parseInt(confirmAddSubtaskBtn.dataset.taskId, 10);
-                    addSubtask(taskId); // Denna funktion hanterar redan att lägga till
+                    addSubtask(taskId); 
                     return;
                 }
-                // NY: Hantera klick på "Avbryt" (kryss-ikonen)
+                // Hantera klick på "Avbryt" (kryss-ikonen)
                 if (cancelAddSubtaskBtn) {
                     const taskId = parseInt(cancelAddSubtaskBtn.dataset.taskId, 10);
                     hideAddSubtaskInput(taskId);
@@ -703,17 +659,7 @@
                     deleteSubtask(taskId, subtaskId);
                     return;
                 }
-                if (saveNoteBtn) {
-                    const taskId = parseInt(saveNoteBtn.dataset.taskId, 10);
-                    saveNote(taskId);
-                    return;
-                }
-                if (saveSubtaskNoteBtn) {
-                    const taskId = parseInt(saveSubtaskNoteBtn.dataset.taskId, 10);
-                    const subtaskId = parseInt(saveSubtaskNoteBtn.dataset.subtaskId, 10);
-                    saveSubtaskNote(taskId, subtaskId);
-                    return;
-                }
+                // Anteckningslyssnare BORTTAGNA
             });
 
             todoList.addEventListener('change', (e) => {
@@ -732,11 +678,11 @@
                 }
             });
 
-            // NY: Lyssnare för "Enter" på tangentbordet
+            // Lyssnare för "Enter" på tangentbordet
             todoList.addEventListener('keyup', (e) => {
                 // Kolla om vi är i rätt input-fält och om tangenten är Enter
                 if (e.key === 'Enter' && e.target.id && e.target.id.startsWith('new-subtask-text-')) {
-                    e.preventDefault(); // Förhindra standard-beteende
+                    e.preventDefault(); 
                     // Hämta taskId från input-fältets id (t.ex. "new-subtask-text-123456789")
                     const taskId = parseInt(e.target.id.split('-')[3], 10);
                     if (!isNaN(taskId)) {

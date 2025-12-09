@@ -1,0 +1,708 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Min Kom Ihåg-App (V5 - Dold Delmålsruta)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer" />
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap');
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f7f9fc;
+            min-height: 100vh;
+        }
+        .card {
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+            transition: box-shadow 0.2s;
+        }
+        .card:hover {
+            box-shadow: 0 15px 40px rgba(0, 0, 0, 0.15);
+        }
+        #warning-modal {
+            display: none;
+        }
+        .past-due {
+            border-left: 6px solid #ef4444;
+        }
+        .upcoming-due {
+            border-left: 6px solid #f59e0b;
+        }
+        #import-file-input {
+            display: none;
+        }
+        .task-details {
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.3s ease-out, padding 0.3s ease-out;
+            padding-top: 0;
+            padding-bottom: 0;
+            border-top: 1px solid transparent;
+        }
+        .task-details.expanded {
+            max-height: 1000px;
+            padding-top: 1rem;
+            padding-bottom: 1rem;
+            transition: max-height 0.5s ease-in, padding 0.5s ease-in;
+            border-top: 1px solid #e5e7eb;
+        }
+        .expand-btn i {
+            transition: transform 0.3s ease;
+        }
+        .expand-btn.expanded i {
+            transform: rotate(180deg);
+        }
+        .subtask-item.completed {
+            text-decoration: line-through;
+            color: #6b7280;
+            opacity: 0.8;
+        }
+    </style>
+</head>
+<body class="p-3 flex items-start justify-center pt-8">
+
+    <div class="w-full max-w-2xl bg-white card rounded-xl p-6 md:p-8">
+        <h1 class="text-3xl md:text-4xl font-extrabold text-gray-800 mb-2">Kom Ihåg-App</h1>
+        <p class="text-gray-500 mb-6">Dina uppgifter (med delmål och anteckningar) sparas lokalt.</p>
+
+        <div class="space-y-4 mb-8 p-3 bg-blue-50 rounded-lg">
+            <h2 class="text-xl font-semibold text-blue-800">Lägg till ny huvuduppgift</h2>
+            <div class="flex flex-col sm:flex-row gap-3">
+                <input type="text" id="task-text" placeholder="Ny uppgift..." class="flex-grow p-3 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 text-gray-700">
+                <input type="date" id="task-deadline" class="p-3 border border-gray-300 rounded-lg text-gray-700">
+            </div>
+            <button id="add-task-btn" class="w-full sm:w-auto px-6 py-3 bg-blue-600 text-white font-semibold rounded-lg shadow-md hover:bg-blue-700 transition duration-150">
+                <i class="fa-solid fa-plus mr-2"></i>Lägg till Uppgift
+            </button>
+        </div>
+        
+        <div class="mb-4 relative">
+            <input type="search" id="search-tasks" placeholder="Sök uppgifter..." class="w-full p-3 pl-10 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 text-gray-700">
+            <i class="fa-solid fa-search text-gray-400 absolute left-3 top-1/2 transform -translate-y-1/2"></i>
+        </div>
+
+        <div id="todo-list" class="space-y-3">
+            <!-- Uppgifter renderas här av JS -->
+        </div>
+
+        <div class="flex flex-col sm:flex-row gap-3 mt-8 border-t border-gray-200 pt-6">
+            <button id="export-btn" class="flex-1 px-4 py-2 bg-gray-200 text-gray-800 font-semibold rounded-lg shadow-sm hover:bg-gray-300 transition duration-150">
+                <i class="fa-solid fa-download mr-2"></i>Exportera Backup
+            </button>
+            <label for="import-file-input" class="flex-1 text-center cursor-pointer px-4 py-2 bg-gray-200 text-gray-800 font-semibold rounded-lg shadow-sm hover:bg-gray-300 transition duration-150">
+                <i class="fa-solid fa-upload mr-2"></i>Importera Backup
+            </label>
+            <input type="file" id="import-file-input" accept=".json">
+        </div>
+
+    </div>
+
+    <!-- Varningsmodal -->
+    <div id="warning-modal" class="fixed inset-0 bg-gray-900 bg-opacity-50 flex items-center justify-center p-3 z-50">
+        <div class="bg-white rounded-xl shadow-2xl max-w-sm w-full p-6 transform transition-all scale-100">
+            <div class="text-3xl text-red-500 mb-4" id="modal-icon"><i class="fa-solid fa-triangle-exclamation"></i></div>
+            <h3 class="text-xl font-bold text-gray-800 mb-2" id="modal-title">Varning!</h3>
+            <p class="text-gray-600 mb-6" id="modal-body">Detta är ett viktigt meddelande.</p>
+            <div id="modal-actions" class="flex justify-end gap-3">
+                <button id="modal-confirm-btn" class="px-4 py-2 bg-red-600 text-white font-semibold rounded-lg hover:bg-red-700 transition duration-150 hidden">
+                    Ja, Radera
+                </button>
+                <button id="modal-close-btn" class="px-4 py-2 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition duration-150">
+                    Stäng
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const STORAGE_KEY = 'min_lokala_todo_lista_v3';
+        const OLD_V1_KEY = 'min_lokala_todo_lista';
+        const OLD_V2_KEY = 'min_lokala_app_data';
+
+        let tasks = [];
+        let expandedTaskIds = new Set();
+        // Håller reda på vilka uppgifter som visar "lägg till delmål"-rutan
+        let showAddSubtaskInputForTaskIds = new Set();
+
+        function parseDate(dateString) {
+            if (!dateString) return null;
+            const parts = dateString.split('-');
+            return new Date(Date.UTC(parts[0], parts[1] - 1, parts[2]));
+        }
+        
+        function formatDate(date) {
+            if (!date) return 'Inget datum';
+            return date.toLocaleDateString('sv-SE', { year: 'numeric', month: 'short', day: 'numeric' });
+        }
+        
+        function showModal(title, message, isConfirm = false, onConfirm = null) {
+            const modal = document.getElementById('warning-modal');
+            document.getElementById('modal-title').textContent = title;
+            document.getElementById('modal-body').textContent = message;
+            
+            const confirmBtn = document.getElementById('modal-confirm-btn');
+            const closeBtn = document.getElementById('modal-close-btn');
+
+            confirmBtn.onclick = null;
+            confirmBtn.classList.add('hidden');
+            closeBtn.textContent = isConfirm ? 'Avbryt' : 'Stäng';
+            closeBtn.classList.remove('bg-blue-600', 'hover:bg-blue-700', 'bg-red-600', 'hover:bg-red-700');
+            closeBtn.classList.add(isConfirm ? 'bg-gray-500' : 'bg-blue-600', isConfirm ? 'hover:bg-gray-600' : 'hover:bg-blue-700');
+
+            if (isConfirm && onConfirm) {
+                confirmBtn.classList.remove('hidden');
+                confirmBtn.textContent = title.includes('Radera') ? 'Ja, Radera' : 'Bekräfta';
+                confirmBtn.onclick = () => {
+                    modal.style.display = 'none';
+                    onConfirm();
+                };
+            }
+            
+            closeBtn.onclick = () => modal.style.display = 'none';
+            modal.style.display = 'flex';
+        }
+
+        // Förenklad migration: tar bort 'note' fälten
+        function migrateTask(task) {
+            if (!task.subtasks) {
+                task.subtasks = [];
+            }
+            task.subtasks = task.subtasks.map(st => {
+                delete st.note; // Tar bort anteckning från delmål
+                return st;
+            });
+            delete task.note; // Tar bort anteckning från huvuduppgift
+            return task;
+        }
+
+        function loadTasks() {
+            try {
+                let json = localStorage.getItem(STORAGE_KEY);
+                let loadedData = json ? JSON.parse(json) : null;
+
+                if (!loadedData) {
+                    json = localStorage.getItem(OLD_V2_KEY);
+                    let oldV2Data = json ? JSON.parse(json) : null;
+                    if (oldV2Data && oldV2Data.tasks) {
+                        loadedData = oldV2Data.tasks;
+                        console.log("Migrerar från V2-data");
+                    } else {
+                        json = localStorage.getItem(OLD_V1_KEY);
+                        loadedData = json ? JSON.parse(json) : [];
+                        if (loadedData.length > 0) {
+                            console.log("Migrerar från V1-data");
+                        }
+                    }
+                }
+                
+                tasks = loadedData.map(migrateTask);
+
+            } catch (error) {
+                console.error("Fel vid laddning från localStorage:", error);
+                showModal("Lagringsfel", "Kunde inte ladda uppgifter. Börjar med en tom lista.");
+                tasks = [];
+            }
+        }
+
+        function saveTasks() {
+            try {
+                localStorage.setItem(STORAGE_KEY, JSON.stringify(tasks));
+                localStorage.removeItem(OLD_V1_KEY);
+                localStorage.removeItem(OLD_V2_KEY);
+            } catch (error) {
+                console.error("Fel vid sparning till localStorage:", error);
+                showModal("Lagringsfel", "Kunde inte spara uppgifter till din webbläsares lokala lagring.");
+            }
+        }
+
+        function renderTasks() {
+            const todoList = document.getElementById('todo-list');
+            const filterText = document.getElementById('search-tasks').value.toLowerCase();
+            
+            // Justering av filtrering: tar bort sökning i anteckningar
+            const filteredTasks = tasks.filter(task => 
+                task.text.toLowerCase().includes(filterText) ||
+                task.subtasks.some(st => st.text.toLowerCase().includes(filterText))
+            );
+
+            if (filteredTasks.length === 0) {
+                if (tasks.length === 0) {
+                    todoList.innerHTML = '<p class="text-center text-gray-500 mt-4 p-3 bg-blue-50 rounded-lg">Inga uppgifter än. Lägg till en ny ovan!</p>';
+                } else {
+                    todoList.innerHTML = `<p class="text-center text-gray-500 mt-4 p-3 bg-gray-100 rounded-lg">Inga uppgifter matchade din sökning.</p>`;
+                }
+                return;
+            }
+
+            // UPPDATERAD SORTERING: Efter skapandetid (timestamp), äldst (lägst värde) först
+            const sortedTasks = [...filteredTasks].sort((a, b) => {
+                // Sortera efter timestamp (äldst först)
+                return a.timestamp - b.timestamp; 
+            });
+
+            todoList.innerHTML = '';
+            sortedTasks.forEach(task => {
+                const taskElement = createTaskElement(task);
+                todoList.appendChild(taskElement);
+            });
+        }
+
+        function createTaskElement(task) {
+            const div = document.createElement('div');
+            div.id = `task-${task.id}`;
+            div.className = 'bg-white rounded-xl card transition duration-300 shadow-sm';
+            
+            let statusClasses = 'border-l-4 border-gray-200';
+            let deadlineText = '';
+
+            if (task.deadline) {
+                const now = parseDate(new Date().toISOString().slice(0, 10)); 
+                const dueDate = parseDate(task.deadline);
+                const diffTime = dueDate.getTime() - now.getTime();
+                const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                deadlineText = `Deadline: ${formatDate(dueDate)}`;
+                if (!task.completed) {
+                    if (diffDays < 0) {
+                        statusClasses = 'past-due'; 
+                        deadlineText = `<span class="font-bold text-red-600"><i class="fa-solid fa-calendar-xmark mr-1"></i> FÖRFALLEN</span> (${formatDate(dueDate)})`;
+                    } else if (diffDays <= 1) {
+                        statusClasses = 'upcoming-due'; 
+                        deadlineText = `<span class="font-bold text-amber-600"><i class="fa-solid fa-triangle-exclamation mr-1"></i> Deadline Nära!</span> (${formatDate(dueDate)})`;
+                        if (diffDays === 0) deadlineText = `<span class="font-bold text-amber-600"><i class="fa-solid fa-triangle-exclamation mr-1"></i> DEADLINE IDAG!</span>`;
+                    }
+                }
+            }
+            if (task.completed) {
+                statusClasses = 'border-l-4 border-green-500 opacity-60';
+            }
+            div.className += ' ' + statusClasses;
+
+            const isExpanded = expandedTaskIds.has(task.id);
+            const completedSubtasks = task.subtasks.filter(st => st.completed).length;
+            const totalSubtasks = task.subtasks.length;
+            
+            const canCompleteMainTask = (totalSubtasks === 0) || (totalSubtasks > 0 && completedSubtasks === totalSubtasks);
+            const mainCheckboxDisabled = !canCompleteMainTask && !task.completed;
+
+            // Logik för "lägg till delmål"-knapp eller -formulär
+            const isAddingSubtask = showAddSubtaskInputForTaskIds.has(task.id);
+            let addSubtaskHTML = '';
+
+            if (isAddingSubtask) {
+                // Visa input-fältet och spara/avbryt-knappar
+                addSubtaskHTML = `
+                    <div class="flex gap-2 mt-3">
+                        <input type="text" id="new-subtask-text-${task.id}" placeholder="Skriv delmål och tryck ⏎" class="flex-grow p-2 border border-blue-500 rounded-md text-sm ring-2 ring-blue-200">
+                        <button data-task-id="${task.id}" class="confirm-add-subtask-btn px-3 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 text-sm" title="Spara delmål">
+                            <i class="fa-solid fa-check"></i>
+                        </button>
+                        <button data-task-id="${task.id}" class="cancel-add-subtask-btn px-3 py-2 bg-gray-500 text-white rounded-md hover:bg-gray-600 text-sm" title="Avbryt">
+                            <i class="fa-solid fa-times"></i>
+                        </button>
+                    </div>
+                `;
+            } else {
+                // Visa bara plus-knappen
+                addSubtaskHTML = `
+                    <button data-task-id="${task.id}" class="show-add-subtask-btn mt-3 px-4 py-2 bg-blue-50 text-blue-700 font-medium rounded-lg hover:bg-blue-100 text-sm w-full border border-blue-200 border-dashed">
+                        <i class="fa-solid fa-plus mr-2"></i>Lägg till delmål
+                    </button>
+                `;
+            }
+
+            // HTML för Task Details är förenklad (anteckningar borta)
+            div.innerHTML = `
+                <div class="flex items-center justify-between p-3">
+                    <div class="flex-grow flex items-center">
+                        <input type="checkbox" data-task-id="${task.id}" ${task.completed ? 'checked' : ''} ${mainCheckboxDisabled ? 'disabled' : ''} class="task-checkbox h-5 w-5 text-blue-600 rounded border-gray-300 focus:ring-blue-500 mr-4 ${mainCheckboxDisabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}">
+                        <div class="flex-grow">
+                            <span class="text-lg font-medium text-gray-800 ${task.completed ? 'line-through text-gray-400' : ''}">${task.text}</span>
+                            
+                            <div class="flex items-center space-x-3 text-xs mt-1 text-gray-500">
+                                ${task.deadline ? `<span>${deadlineText}</span>` : ''}
+                                ${totalSubtasks > 0 ? `<span class="font-medium ${completedSubtasks === totalSubtasks ? 'text-green-600' : 'text-blue-600'}"><i class="fa-solid fa-list-check mr-1"></i> ${completedSubtasks}/${totalSubtasks}</span>` : ''}
+                            </div>
+                        </div>
+                    </div>
+                    <div class="flex-shrink-0 ml-4">
+                        <button data-task-id="${task.id}" class="expand-btn ${isExpanded ? 'expanded' : ''} text-blue-500 hover:text-blue-700 p-2 rounded-full transition duration-150">
+                            <i class="fa-solid fa-chevron-down"></i>
+                        </button>
+                        <button data-task-id="${task.id}" class="delete-btn-task text-red-500 hover:text-red-700 p-2 rounded-full transition duration-150">
+                            <i class="fa-solid fa-trash-can"></i>
+                        </button>
+                    </div>
+                </div>
+                
+                <div class="task-details ${isExpanded ? 'expanded' : ''} px-4" data-details-id="${task.id}">
+                    
+                    <div class="mb-2">
+                        <h4 class="text-sm font-semibold text-gray-600 mb-2">Delmål</h4>
+                        <div id="subtask-list-${task.id}" class="space-y-2 mb-3">
+                            ${renderSubtasksHTML(task)}
+                        </div>
+                        
+                        ${addSubtaskHTML}
+                        
+                    </div>
+                    
+                </div>
+            `;
+            
+            return div;
+        }
+
+        // Förenklad rendering av delmål (anteckningar borta)
+        function renderSubtasksHTML(task) {
+            if (task.subtasks.length === 0) {
+                return '<p class="text-xs text-gray-400 pl-7">Inga delmål än.</p>';
+            }
+            return task.subtasks.map(st => `
+                <div class="subtask-item mb-1 p-3 bg-gray-50 rounded-lg border border-gray-200">
+                    <div class="flex items-center">
+                        <input type="checkbox" data-task-id="${task.id}" data-subtask-id="${st.id}" ${st.completed ? 'checked' : ''} class="subtask-checkbox h-4 w-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500 mr-3 cursor-pointer">
+                        <span class="flex-grow text-sm ${st.completed ? 'line-through text-gray-500' : 'font-medium'}">${st.text}</span>
+                        <button data-task-id="${task.id}" data-subtask-id="${st.id}" class="delete-subtask-btn text-red-400 hover:text-red-600 p-1 rounded-full text-xs">
+                            <i class="fa-solid fa-times"></i>
+                        </button>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function addTask() {
+            const textInput = document.getElementById('task-text');
+            const deadlineInput = document.getElementById('task-deadline');
+            const text = textInput.value.trim();
+            const deadline = deadlineInput.value; 
+
+            if (text === "") {
+                showModal("Ogiltig Uppgift", "Vänligen ange en beskrivning för uppgiften.");
+                return;
+            }
+
+            const newTask = {
+                id: Date.now(), 
+                text: text,
+                deadline: deadline || null,
+                completed: false,
+                timestamp: Date.now(),
+                subtasks: [],
+                // 'note' fältet tas bort
+            };
+
+            tasks.push(newTask);
+            saveTasks(); 
+            renderTasks();
+            
+            textInput.value = '';
+            deadlineInput.value = '';
+        }
+
+        function toggleTaskCompleted(taskId, completed) {
+            const task = tasks.find(t => t.id === taskId);
+            if (task) {
+                const completedSubtasks = task.subtasks.filter(st => st.completed).length;
+                const totalSubtasks = task.subtasks.length;
+                const canCompleteMainTask = (totalSubtasks === 0) || (totalSubtasks > 0 && completedSubtasks === totalSubtasks);
+
+                if (completed && !canCompleteMainTask) {
+                    showModal("Kan inte slutföra", "Du måste slutföra alla delmål innan du kan bocka av huvuduppgiften.");
+                    renderTasks(); 
+                    return;
+                }
+
+                task.completed = completed;
+                
+                if (!completed && totalSubtasks > 0) {
+                    task.subtasks.forEach(st => st.completed = false);
+                }
+                
+                saveTasks();
+                renderTasks();
+            }
+        }
+
+        function confirmDeleteTask(taskId) {
+            showModal(
+                "Radera Huvuduppgift?", 
+                "Är du säker på att du vill radera denna uppgift och alla dess delmål?",
+                true, 
+                () => deleteTask(taskId) 
+            );
+        }
+
+        function deleteTask(taskId) {
+            tasks = tasks.filter(t => t.id !== taskId);
+            expandedTaskIds.delete(taskId);
+            showAddSubtaskInputForTaskIds.delete(taskId); 
+            saveTasks();
+            renderTasks();
+        }
+
+        function toggleDetails(taskId) {
+            if (expandedTaskIds.has(taskId)) {
+                expandedTaskIds.delete(taskId);
+                showAddSubtaskInputForTaskIds.delete(taskId); 
+            } else {
+                expandedTaskIds.add(taskId);
+            }
+            renderTasks();
+        }
+
+        function addSubtask(taskId) {
+            const task = tasks.find(t => t.id === taskId);
+            const textInput = document.getElementById(`new-subtask-text-${taskId}`);
+            const text = textInput ? textInput.value.trim() : "";
+            
+            if (task && text !== "") {
+                const newSubtask = {
+                    id: Date.now(),
+                    text: text,
+                    completed: false,
+                    // 'note' fältet tas bort
+                };
+                task.subtasks.push(newSubtask);
+                task.completed = false;
+                
+                saveTasks();
+                renderTasks();
+
+                // Se till att fokusen hamnar rätt för att lägga till fler
+                setTimeout(() => {
+                    const newInput = document.getElementById(`new-subtask-text-${taskId}`);
+                    if (newInput) {
+                        newInput.focus();
+                    }
+                }, 0);
+            }
+        }
+        
+        function toggleSubtask(taskId, subtaskId, completed) {
+            const task = tasks.find(t => t.id === taskId);
+            if (task) {
+                const subtask = task.subtasks.find(st => st.id === subtaskId);
+                if (subtask) {
+                    subtask.completed = completed;
+                    
+                    const completedSubtasks = task.subtasks.filter(st => st.completed).length;
+                    const totalSubtasks = task.subtasks.length;
+                    
+                    if (totalSubtasks > 0 && completedSubtasks === totalSubtasks) {
+                        task.completed = true;
+                    } else if (totalSubtasks > 0 && completedSubtasks < totalSubtasks) {
+                        task.completed = false;
+                    }
+                    
+                    saveTasks();
+                    renderTasks();
+                }
+            }
+        }
+
+        function deleteSubtask(taskId, subtaskId) {
+            const task = tasks.find(t => t.id === taskId);
+            if (task) {
+                task.subtasks = task.subtasks.filter(st => st.id !== subtaskId);
+                
+                const completedSubtasks = task.subtasks.filter(st => st.completed).length;
+                const totalSubtasks = task.subtasks.length;
+                
+                if (totalSubtasks > 0 && completedSubtasks === totalSubtasks) {
+                    task.completed = true;
+                } else if (totalSubtasks === 0) {
+                     // Låt vara
+                } else {
+                    task.completed = false;
+                }
+
+                saveTasks();
+                renderTasks();
+            }
+        }
+
+        // --- NYA HJÄLPFUNKTIONER ---
+        function showAddSubtaskInput(taskId) {
+            showAddSubtaskInputForTaskIds.add(taskId);
+            renderTasks();
+            
+            // Fokusera automatiskt på input-fältet när det dyker upp
+            setTimeout(() => {
+                const input = document.getElementById(`new-subtask-text-${taskId}`);
+                if (input) {
+                    input.focus();
+                }
+            }, 0);
+        }
+
+        function hideAddSubtaskInput(taskId) {
+            showAddSubtaskInputForTaskIds.delete(taskId);
+            renderTasks();
+        }
+        // --- SLUT PÅ NYA FUNKTIONER ---
+
+        // Funktioner för att spara anteckningar är borttagna
+
+        function exportTasks() {
+            if (tasks.length === 0) {
+                showModal("Ingen data", "Det finns inga uppgifter att exportera.");
+                return;
+            }
+            // Export: Tar bort 'note' fältet vid export
+            const tasksToExport = tasks.map(t => {
+                const copy = {...t};
+                delete copy.note; // Tar bort huvuduppgiftsanteckning
+                copy.subtasks = copy.subtasks.map(st => {
+                    const stCopy = {...st};
+                    delete stCopy.note; // Tar bort deluppgiftsanteckning
+                    return stCopy;
+                });
+                return copy;
+            });
+            
+            const json = JSON.stringify(tasksToExport, null, 2); 
+            const blob = new Blob([json], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `kom_i_hag_export_${new Date().toISOString().slice(0, 10)}.json`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+
+        function importTasks(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                try {
+                    const importedTasks = JSON.parse(e.target.result);
+                    
+                    if (!Array.isArray(importedTasks) || (importedTasks.length > 0 && !importedTasks[0].text)) {
+                        throw new Error("JSON-filen verkar inte innehålla en giltig lista med uppgifter.");
+                    }
+                    
+                    tasks = importedTasks.map(migrateTask); // Använder migreringsfunktionen för att rensa anteckningar
+                    
+                    expandedTaskIds.clear();
+                    showAddSubtaskInputForTaskIds.clear(); 
+                    saveTasks(); 
+                    renderTasks();
+                    showModal("Import Lyckades", `Lyckades importera ${tasks.length} uppgifter.`);
+
+                } catch (error) {
+                    console.error("Fel vid import:", error);
+                    showModal("Import Fel", `Kunde inte importera filen: ${error.message}`);
+                } finally {
+                    event.target.value = '';
+                }
+            };
+            reader.readAsText(file);
+        }
+
+        // UPPDATERAD: Borttagna lyssnare för anteckningar
+        function setupListListeners() {
+            const todoList = document.getElementById('todo-list');
+            
+            todoList.addEventListener('click', (e) => {
+                const target = e.target;
+                
+                const deleteBtn = target.closest('.delete-btn-task');
+                const expandBtn = target.closest('.expand-btn');
+                const deleteSubtaskBtn = target.closest('.delete-subtask-btn');
+                // const saveNoteBtn = target.closest('.save-note-btn'); // BORTTAGEN
+                // const saveSubtaskNoteBtn = target.closest('.save-subtask-note-btn'); // BORTTAGEN
+                
+                // NYA LYSSNARE
+                const showAddSubtaskBtn = target.closest('.show-add-subtask-btn');
+                const confirmAddSubtaskBtn = target.closest('.confirm-add-subtask-btn');
+                const cancelAddSubtaskBtn = target.closest('.cancel-add-subtask-btn');
+                
+                if (deleteBtn) {
+                    const taskId = parseInt(deleteBtn.dataset.taskId, 10);
+                    confirmDeleteTask(taskId);
+                    return;
+                }
+                if (expandBtn) {
+                    const taskId = parseInt(expandBtn.dataset.taskId, 10);
+                    toggleDetails(taskId);
+                    return;
+                }
+                
+                // Hantera klick på "+ Lägg till delmål"
+                if (showAddSubtaskBtn) {
+                    const taskId = parseInt(showAddSubtaskBtn.dataset.taskId, 10);
+                    showAddSubtaskInput(taskId);
+                    return;
+                }
+                // Hantera klick på "Spara" (check-ikonen)
+                if (confirmAddSubtaskBtn) {
+                    const taskId = parseInt(confirmAddSubtaskBtn.dataset.taskId, 10);
+                    addSubtask(taskId); 
+                    return;
+                }
+                // Hantera klick på "Avbryt" (kryss-ikonen)
+                if (cancelAddSubtaskBtn) {
+                    const taskId = parseInt(cancelAddSubtaskBtn.dataset.taskId, 10);
+                    hideAddSubtaskInput(taskId);
+                    return;
+                }
+                
+                if (deleteSubtaskBtn) {
+                    const taskId = parseInt(deleteSubtaskBtn.dataset.taskId, 10);
+                    const subtaskId = parseInt(deleteSubtaskBtn.dataset.subtaskId, 10);
+                    deleteSubtask(taskId, subtaskId);
+                    return;
+                }
+                // Anteckningslyssnare BORTTAGNA
+            });
+
+            todoList.addEventListener('change', (e) => {
+                const target = e.target;
+
+                if (target.classList.contains('task-checkbox')) {
+                    const taskId = parseInt(target.dataset.taskId, 10);
+                    toggleTaskCompleted(taskId, target.checked);
+                    return;
+                }
+                if (target.classList.contains('subtask-checkbox')) {
+                    const taskId = parseInt(target.dataset.taskId, 10);
+                    const subtaskId = parseInt(target.dataset.subtaskId, 10);
+                    toggleSubtask(taskId, subtaskId, target.checked);
+                    return;
+                }
+            });
+
+            // Lyssnare för "Enter" på tangentbordet
+            todoList.addEventListener('keyup', (e) => {
+                // Kolla om vi är i rätt input-fält och om tangenten är Enter
+                if (e.key === 'Enter' && e.target.id && e.target.id.startsWith('new-subtask-text-')) {
+                    e.preventDefault(); 
+                    // Hämta taskId från input-fältets id (t.ex. "new-subtask-text-123456789")
+                    const taskId = parseInt(e.target.id.split('-')[3], 10);
+                    if (!isNaN(taskId)) {
+                        addSubtask(taskId);
+                    }
+                }
+            });
+        }
+
+        window.onload = function() {
+            loadTasks(); 
+            renderTasks();
+
+            document.getElementById('add-task-btn').addEventListener('click', addTask);
+            document.getElementById('export-btn').addEventListener('click', exportTasks);
+            document.getElementById('import-file-input').addEventListener('change', importTasks);
+            document.getElementById('search-tasks').addEventListener('input', renderTasks);
+            
+            setupListListeners();
+        };
+    </script>
+</body>
+</html>
